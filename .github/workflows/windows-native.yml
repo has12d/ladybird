@@ -2,12 +2,10 @@ name: Ladybird Windows Native
 
 on:
   workflow_dispatch:
-  push:
-    branches: [ master, main ]
 
 jobs:
   build-windows:
-    runs-on: windows-2025
+    runs-on: windows-2022
     timeout-minutes: 360
     defaults:
       run:
@@ -21,17 +19,19 @@ jobs:
       - name: Enable long paths
         run: git config --system core.longpaths true
 
+      - name: Get CMake + Ninja
+        uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: "~3.31.6"
+          ninjaVersion: "~1.12.1"
+
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
-
-      - name: Install LLVM + build tools
+      - name: Install LLVM + tools
         run: |
           choco install -y sccache pkgconfiglite nasm --no-progress
           if (!(Get-Command clang-cl -ErrorAction SilentlyContinue)) {
@@ -42,6 +42,10 @@ jobs:
           cmake --version
           ninja --version
 
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
       - name: Install wasm-tools
         run: |
           $VERSION="1.243.0"
@@ -51,16 +55,19 @@ jobs:
           Move-Item $NAME wasm-tools
           echo "$env:GITHUB_WORKSPACE/wasm-tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-      - name: Build (vcpkg + configure + compile)
+      - name: Build
+        run: python Meta\ladybird.py build --preset Release --jobs 2
+
+      - name: Dump angle log on failure
+        if: failure()
         run: |
-          python Meta\ladybird.py build --preset Release --jobs 4
+          Get-Content D:/a/ladybird/ladybird/Build/vcpkg-release/buildtrees/angle/install-x64-windows-rel-out.log -Tail 300
 
       - name: Upload browser
-        if: always()
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: ladybird-windows-x64
-          path: |
-            Build/release/bin/
+          path: Build/release/bin/
           retention-days: 7
           if-no-files-found: error
